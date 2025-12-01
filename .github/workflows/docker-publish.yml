@@ -1,27 +1,98 @@
-name: Build & Push Docker image to Docker Hub
+pipeline {
+    agent any
 
-on:
-  push:
-    branches: [ "main" ]
-  workflow_dispatch:
+    environment {
+        // Folder where the deployed static site will live
+        DEPLOY_DIR = 'C:\\Deploy\\BigBasketSite'
+    }
 
-jobs:
-  docker:
-    runs-on: ubuntu-latest
+    stages {
+        stage('Checkout') {
+            steps {
+                // If this is a "Pipeline script from SCM" job, Jenkins already checks out.
+                // But this also works if you run it as plain pipeline.
+                git branch: 'main', url: 'https://github.com/Surya17200/BigBasket-Clone.git'
+            }
+        }
 
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+        stage('Run Tests') {
+            steps {
+                bat '''
+                echo ==== Running sanity tests on static BigBasket site ====
 
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+                REM 1) Check index.html exists
+                if not exist "%WORKSPACE%\\index.html" (
+                  echo [ERROR] index.html is missing in project root!
+                  exit /b 1
+                )
 
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: true
-          tags: ${{ secrets.DOCKERHUB_USERNAME }}/bigbasket-clone:latest
+                REM 2) Check index.html is not empty
+                for %%F in ("%WORKSPACE%\\index.html") do (
+                  if %%~zF EQU 0 (
+                    echo [ERROR] index.html is empty!
+                    exit /b 1
+                  )
+                )
+
+                REM 3) Check main style.css exists
+                if not exist "%WORKSPACE%\\style.css" (
+                  echo [ERROR] style.css is missing in project root!
+                  exit /b 1
+                )
+
+                REM 4) Check some key pages exist
+                if not exist "%WORKSPACE%\\home.html" (
+                  echo [ERROR] home.html is missing!
+                  exit /b 1
+                )
+
+                if not exist "%WORKSPACE%\\login.html" (
+                  echo [ERROR] login.html is missing!
+                  exit /b 1
+                )
+
+                if not exist "%WORKSPACE%\\signup.html" (
+                  echo [ERROR] signup.html is missing!
+                  exit /b 1
+                )
+
+                echo ==== All sanity tests passed ✅ ====
+                '''
+            }
+        }
+
+        stage('Deploy Static Files') {
+            steps {
+                bat '''
+                echo ==== Deploying Static BigBasket Site ====
+
+                REM 1) Create deploy folder if missing
+                if not exist "%DEPLOY_DIR%" (
+                  echo Creating deploy folder %DEPLOY_DIR% ...
+                  mkdir "%DEPLOY_DIR%"
+                )
+
+                REM 2) Clean old files
+                echo Cleaning deploy folder %DEPLOY_DIR% ...
+                del /Q "%DEPLOY_DIR%\\*" 2>nul
+                for /d %%D in ("%DEPLOY_DIR%\\*") do rd /S /Q "%%D"
+
+                REM 3) Copy new files from workspace to deploy folder
+                echo Copying files from %WORKSPACE% to %DEPLOY_DIR% ...
+                xcopy "%WORKSPACE%\\*" "%DEPLOY_DIR%\\" /E /I /Y
+
+                echo ✅ Deployment finished. Open %DEPLOY_DIR%\\index.html in your browser.
+                '''
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "✅ Pipeline finished successfully. Site deployed to C:\\Deploy\\BigBasketSite"
+        }
+        failure {
+            echo "❌ Pipeline failed. Check which stage (tests or deploy) broke."
+        }
+    }
+}
