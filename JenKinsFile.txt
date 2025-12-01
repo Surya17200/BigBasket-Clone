@@ -1,0 +1,44 @@
+pipeline {
+    agent any
+
+    environment {
+        DEPLOY_DIR = 'C:\\Deploy\\BigBasketSite'
+    }
+
+    stages {
+        stage('Pull Code from GitHub') {
+            steps {
+                git branch: 'main', url: 'https://github.com/Surya17200/BigBasket-Clone.git'
+            }
+        }
+
+        stage('Prepare Deploy Folder') {
+            steps {
+                bat '''
+                if exist "C:\\Deploy\\BigBasketSite" (
+                  echo Cleaning deploy folder
+                  del /Q "C:\\Deploy\\BigBasketSite\\*" 2>nul
+                  for /d %%D in ("C:\\Deploy\\BigBasketSite\\*") do rd /S /Q "%%D"
+                ) else (
+                  mkdir "C:\\Deploy\\BigBasketSite"
+                )
+                '''
+            }
+        }
+
+        stage('Deploy Static Files') {
+            steps {
+                bat 'xcopy "%WORKSPACE%\\*" "%DEPLOY_DIR%\\" /E /I /Y'
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "✅ Deployment complete! Open: C:\\Deploy\\BigBasketSite\\index.html"
+        }
+        failure {
+            echo "❌ Something went wrong, check console output."
+        }
+    }
+}
