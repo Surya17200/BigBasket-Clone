@@ -2,22 +2,28 @@ pipeline {
     agent any
 
     environment {
-        // Folder where your deployed static site will live
-        DEPLOY_DIR = 'C:\\Deploy\\BigBasketSite'
+        // TODO: change this to your real Tomcat webapps path if different
+        TOMCAT_WEBAPPS = 'C:\\Tomcat\\webapps'
+        APP_CONTEXT    = 'bigbasket'  // will be available at http://localhost:8080/bigbasket/
+        DEPLOY_DIR     = "${TOMCAT_WEBAPPS}\\${APP_CONTEXT}"
     }
 
     stages {
         stage('Prepare Deploy Folder') {
             steps {
-                // Clean or create deploy folder on Windows
+                // Create or clean the Tomcat context folder on Windows
                 bat '''
-                if exist "C:\\Deploy\\BigBasketSite" (
-                  echo Cleaning deploy folder...
-                  del /Q "C:\\Deploy\\BigBasketSite\\*" 2>nul
-                  for /d %%D in ("C:\\Deploy\\BigBasketSite\\*") do rd /S /Q "%%D"
+                echo ==== Preparing Tomcat deploy folder ====
+
+                set "TARGET=%DEPLOY_DIR%"
+
+                if not exist "%TARGET%" (
+                  echo Creating folder "%TARGET%" ...
+                  mkdir "%TARGET%"
                 ) else (
-                  echo Creating deploy folder...
-                  mkdir "C:\\Deploy\\BigBasketSite"
+                  echo Cleaning folder "%TARGET%" ...
+                  del /Q "%TARGET%\\*" 2>nul
+                  for /d %%D in ("%TARGET%\\*") do rd /S /Q "%%D"
                 )
                 '''
             }
@@ -26,10 +32,15 @@ pipeline {
         stage('Deploy Static Files') {
             steps {
                 // Jenkins has already checked out the repo to %WORKSPACE%
-                // Copy all files (HTML/CSS/JS) to deploy folder
+                // Copy all files (HTML/CSS/JS) to Tomcat webapps context folder
                 bat '''
-                echo Copying files to %DEPLOY_DIR% ...
+                echo ==== Deploying static files to Tomcat ====
+                echo Copying files from "%WORKSPACE%" to "%DEPLOY_DIR%" ...
+
                 xcopy "%WORKSPACE%\\*" "%DEPLOY_DIR%\\" /E /I /Y
+
+                echo ✅ Deployment complete!
+                echo Application should be available at: http://localhost:8080/%APP_CONTEXT%/
                 '''
             }
         }
@@ -37,8 +48,8 @@ pipeline {
 
     post {
         success {
-            echo "✅ Deployment complete!"
-            echo "Open: C:\\Deploy\\BigBasketSite\\index.html"
+            echo "✅ Deployment to Tomcat succeeded."
+            echo "Open: http://localhost:8080/${APP_CONTEXT}/"
         }
         failure {
             echo "❌ Deployment failed. Check console output in Jenkins."
